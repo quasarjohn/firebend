@@ -65,8 +65,10 @@ fs.readdir(inputDir, (_, files) => {
             generatedCode = generatedCode.replace("{{subcollectionPlaceholder}}", "")
 
 
-            fs.writeFile("./src/generated/" + interfaceName + "s.ts",
-                generatedCode, (err) => { })
+            fs.writeFile("./src/firebends/" + interfaceName + "s.ts",
+                generatedCode, (err) => {
+                    console.log(err);
+                })
         }
     }
 })
@@ -82,6 +84,12 @@ const generateCollection = (
 import firebase, { firestore, FirebaseError } from "firebase"
 import { ${interfaceName} } from "${folderName}/${fileName.replace(".ts", "")}"
 {{importsPlaceholder}}
+
+export interface DocListenerCallback {
+    added: CallableFunction;
+    removed?: CallableFunction;
+    modified?: CallableFunction;
+}
 
 const db = firebase.firestore()
 const collectionPath = "${collectionPath}"
@@ -138,13 +146,48 @@ const listenToOne = (id: string, callback: (${documentName}: ${interfaceName}) =
 }
 
 /** Gets a specific document once using id */
-const getOne = (id: string) => {
+const getOne = (childId: string) => {
     return new Promise<${interfaceName}>((resolve, reject) => {
         db.collection(collectionPath)
-            .doc(id).get().then((doc: firestore.DocumentSnapshot) => {
+            .doc(childId)
+            .get().then((doc: firestore.DocumentSnapshot) => {
                 resolve(doc.data() as ${interfaceName})
             }).catch((error: FirebaseError) => reject(error))
     })
+}
+
+/** Gets all document in a collection once */
+const getAll = () => {
+    return new Promise<${interfaceName}[]>((resolve, reject) => {
+        const items: ${interfaceName}[] = []
+        db.collection(collectionPath).get().then((querySnapshot: firestore.QuerySnapshot) => {
+            querySnapshot.forEach((doc) => {
+                doc.data()
+                items.push(doc.data() as ${interfaceName})
+            })
+            resolve(items)
+        }).catch((error) => {
+            reject(error)
+        })
+    });
+}
+
+/** Listens in real-time to all documents */
+const litenToAll = (callback: DocListenerCallback) => {
+    db.collection(collectionPath)
+        .onSnapshot((snapshot) => {
+            snapshot.docChanges().forEach((change: firestore.DocumentChange) => {
+                if (change.type === "added") {
+                    callback.added(change.doc)
+                }
+                if (change.type === "modified") {
+                    callback.modified!!(change.doc)
+                }
+                if (change.type === "removed") {
+                    callback.removed!!(change.doc)
+                }
+            });
+        });
 }
 
 /** Gets a specific document once with query params */
@@ -359,10 +402,51 @@ const ${subcollectionPath} = (id: string) => {
         })
     }
 
+        /** Gets all document in a collection once */
+    const getAll = () => {
+        return new Promise<${interfaceName}[]>((resolve, reject) => {
+            const items: ${interfaceName}[] = []
+            db.collection(collectionPath)
+            .doc(id)
+            .collection(subcollectionPath)
+            .get().then((querySnapshot: firestore.QuerySnapshot) => {
+                querySnapshot.forEach((doc) => {
+                    doc.data()
+                    items.push(doc.data() as ${interfaceName})
+                })
+                resolve(items)
+            }).catch((error) => {
+                reject(error)
+            })
+        });
+    }
+
+    /** Listens in real-time to all documents */
+    const litenToAll = (callback: DocListenerCallback) => {
+        db.collection(collectionPath)
+            .doc(id)
+            .collection(subcollectionPath)
+            .onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change: firestore.DocumentChange) => {
+                    if (change.type === "added") {
+                        callback.added(change.doc)
+                    }
+                    if (change.type === "modified") {
+                        callback.modified!!(change.doc)
+                    }
+                    if (change.type === "removed") {
+                        callback.removed!!(change.doc)
+                    }
+                });
+            });
+    }
+
     /** Gets a specific document once with query params */
     const queryOnce = (params: ${interfaceName}) => {
         return new Promise<${interfaceName}[]>((resolve, reject) => {
             let queryStore: any = db.collection(collectionPath)
+                .doc(id)
+                .collection(subcollectionPath)
                 .doc(id).collection(subcollectionPath)
 
             for (const key of Object.keys(params)) {
